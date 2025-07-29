@@ -1,91 +1,88 @@
-import { type NextRequest, NextResponse } from "next/server"
-import jwt from "jsonwebtoken"
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { jwtVerify } from "jose"
 
-// 需要认证的路径
-const protectedPaths = [
-  "/api/ai-script",
-  "/api/star-economy",
-  "/api/auth/me",
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "fallback-secret-key")
+
+// 需要认证的路由
+const protectedRoutes = [
   "/profile",
   "/ai-script",
-  "/star-economy",
-]
-
-// 公开路径
-const publicPaths = [
-  "/api/auth/login",
-  "/api/auth/register",
-  "/api/auth/send-code",
-  "/api/cultural-gene",
-  "/",
-  "/cultural-crossing",
   "/cultural-gene",
+  "/star-economy",
   "/social-system",
+  "/project-management",
 ]
 
-export function middleware(request: NextRequest) {
+// 公开路由
+const publicRoutes = [
+  "/",
+  "/main",
+  "/auth",
+  "/auth/single-page",
+  "/cultural-crossing",
+  "/functionality-report",
+  "/test-optimization",
+]
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // 检查是否是公开路径
-  const isPublicPath = publicPaths.some((path) => pathname === path || pathname.startsWith(path + "/"))
+  // 检查是否是API路由
+  if (pathname.startsWith("/api/")) {
+    // API路由的认证逻辑
+    if (pathname.startsWith("/api/auth/")) {
+      // 认证相关的API不需要token验证
+      return NextResponse.next()
+    }
 
-  if (isPublicPath) {
-    return NextResponse.next()
-  }
+    // 其他API需要token验证
+    const token =
+      request.cookies.get("auth-token")?.value || request.headers.get("authorization")?.replace("Bearer ", "")
 
-  // 检查是否是受保护的路径
-  const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path))
+    if (!token) {
+      return NextResponse.json({ error: "未提供认证令牌" }, { status: 401 })
+    }
 
-  if (!isProtectedPath) {
-    return NextResponse.next()
-  }
-
-  // 获取认证token
-  const token = request.cookies.get("auth-token")?.value || request.headers.get("authorization")?.replace("Bearer ", "")
-
-  if (!token) {
-    // API路径返回401，页面路径重定向到登录
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ success: false, message: "请先登录" }, { status: 401 })
-    } else {
-      const loginUrl = new URL("/auth", request.url)
-      loginUrl.searchParams.set("redirect", pathname)
-      return NextResponse.redirect(loginUrl)
+    try {
+      await jwtVerify(token, JWT_SECRET)
+      return NextResponse.next()
+    } catch (error) {
+      return NextResponse.json({ error: "无效的认证令牌" }, { status: 401 })
     }
   }
 
-  try {
-    // 验证JWT token
-    jwt.verify(token, process.env.JWT_SECRET || "fallback-secret")
-    return NextResponse.next()
-  } catch (error) {
-    console.error("Token验证失败:", error)
+  // 页面路由的认证逻辑
+  const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route))
 
-    // 清除无效token
-    const response = pathname.startsWith("/api/")
-      ? NextResponse.json({ success: false, message: "Token无效，请重新登录" }, { status: 401 })
-      : NextResponse.redirect(new URL("/auth", request.url))
+  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route))
 
-    response.cookies.set("auth-token", "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 0,
-    })
+  if (isProtectedRoute) {
+    const token = request.cookies.get("auth-token")?.value
 
-    return response
+    if (!token) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth"
+      url.searchParams.set("redirect", pathname)
+      return NextResponse.redirect(url)
+    }
+
+    try {
+      await jwtVerify(token, JWT_SECRET)
+      return NextResponse.next()
+    } catch (error) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth"
+      url.searchParams.set("redirect", pathname)
+      const response = NextResponse.redirect(url)
+      response.cookies.delete("auth-token")
+      return response
+    }
   }
+
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: [
-    /*
-     * 匹配所有路径除了:
-     * - _next/static (静态文件)
-     * - _next/image (图片优化)
-     * - favicon.ico (网站图标)
-     * - public文件夹中的文件
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|public/).*)"],
 }
