@@ -154,7 +154,7 @@ const baguaScript = await generateScript({
 
 1. **克隆项目**
 \`\`\`bash
-git@github.com:YY-Nexus/Director-s-Stack.git
+git clone https://github.com/your-org/yanyu-yipin.git
 cd yanyu-yipin
 \`\`\`
 
@@ -542,8 +542,11 @@ analytics.performance('page_load_time', {
 ## 📞 联系我们
 
 - **官方网站**：[https://yanyu-yipin.com](https://yanyu-yipin.com)
-- **邮箱**：china@0379.email
-git@github.com:YY-Nexus/Director-s-Stack.git
+- **邮箱**：contact@yanyu-yipin.com
+- **微信公众号**：言语逸品
+- **GitHub**：[https://github.com/yanyu-yipin](https://github.com/yanyu-yipin)
+- **技术交流群**：加微信 yanyu-tech 邀请入群
+
 ---
 
 <div align="center">
