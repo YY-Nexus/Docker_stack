@@ -2,27 +2,17 @@ import { type NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 
-interface RegisterRequest {
-  phone: string
-  name: string
-  password: string
-  code: string
-}
-
 // 模拟用户数据库
-const users = new Map()
-
-// 模拟验证码存储
-const verificationCodes = new Map<string, { code: string; expires: number }>()
+const users: any[] = []
 
 export async function POST(request: NextRequest) {
   try {
-    const body: RegisterRequest = await request.json()
-    const { phone, name, password, code } = body
+    const body = await request.json()
+    const { phone, password, code, name } = body
 
     // 验证必填字段
-    if (!phone || !name || !password || !code) {
-      return NextResponse.json({ success: false, message: "所有字段都是必填的" }, { status: 400 })
+    if (!phone || !code) {
+      return NextResponse.json({ success: false, message: "手机号和验证码不能为空" }, { status: 400 })
     }
 
     // 验证手机号格式
@@ -31,45 +21,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "手机号格式不正确" }, { status: 400 })
     }
 
-    // 验证密码强度
-    if (password.length < 6) {
-      return NextResponse.json({ success: false, message: "密码长度至少6位" }, { status: 400 })
-    }
-
-    // 检查用户是否已存在
-    if (users.has(phone)) {
-      return NextResponse.json({ success: false, message: "该手机号已注册" }, { status: 409 })
-    }
-
-    // 验证验证码
-    const storedCode = verificationCodes.get(phone)
-    if (!storedCode || storedCode.expires < Date.now()) {
-      return NextResponse.json({ success: false, message: "验证码已过期" }, { status: 400 })
-    }
-
-    if (storedCode.code !== code) {
+    // 验证验证码（模拟验证）
+    if (code !== "123456") {
       return NextResponse.json({ success: false, message: "验证码错误" }, { status: 400 })
     }
 
-    // 加密密码
-    const hashedPassword = await bcrypt.hash(password, 12)
+    // 检查用户是否已存在
+    const existingUser = users.find((u) => u.phone === phone)
+    if (existingUser) {
+      return NextResponse.json({ success: false, message: "该手机号已注册" }, { status: 409 })
+    }
+
+    // 加密密码（如果提供了密码）
+    let hashedPassword = ""
+    if (password) {
+      if (password.length < 6) {
+        return NextResponse.json({ success: false, message: "密码长度不能少于6位" }, { status: 400 })
+      }
+      hashedPassword = await bcrypt.hash(password, 12)
+    }
 
     // 创建新用户
     const newUser = {
       id: Date.now().toString(),
       phone,
-      name,
       password: hashedPassword,
-      avatar: `/placeholder.svg?height=40&width=40&query=${encodeURIComponent(name)}`,
-      level: "新手导演",
-      stars: 100, // 注册奖励
+      name: name || `用户${phone.slice(-4)}`,
+      avatar: "/placeholder.svg?height=40&width=40",
+      level: "初级导演",
+      starCoins: 100, // 新用户赠送100星币
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
 
-    users.set(phone, newUser)
-
-    // 清除验证码
-    verificationCodes.delete(phone)
+    users.push(newUser)
 
     // 生成JWT token
     const token = jwt.sign(
@@ -79,23 +64,21 @@ export async function POST(request: NextRequest) {
         name: newUser.name,
       },
       process.env.JWT_SECRET || "fallback-secret",
-      { expiresIn: "24h" },
+      { expiresIn: "7d" },
     )
-
-    const userResponse = {
-      id: newUser.id,
-      phone: newUser.phone,
-      name: newUser.name,
-      avatar: newUser.avatar,
-      level: newUser.level,
-      stars: newUser.stars,
-    }
 
     const response = NextResponse.json({
       success: true,
       message: "注册成功",
       data: {
-        user: userResponse,
+        user: {
+          id: newUser.id,
+          phone: newUser.phone,
+          name: newUser.name,
+          avatar: newUser.avatar,
+          level: newUser.level,
+          starCoins: newUser.starCoins,
+        },
         token,
       },
     })
@@ -105,7 +88,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 86400, // 24小时
+      maxAge: 7 * 24 * 60 * 60, // 7天
     })
 
     return response

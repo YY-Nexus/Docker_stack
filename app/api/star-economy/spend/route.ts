@@ -1,64 +1,77 @@
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 
+// 模拟用户星币数据
+const userBalances = new Map([["1", { balance: 1000, totalEarned: 2500, totalSpent: 1500 }]])
+
+// 模拟交易记录
+const transactions: any[] = []
+
 export async function POST(request: NextRequest) {
   try {
-    // 验证用户身份
+    // 验证用户认证
     const token =
       request.cookies.get("auth-token")?.value || request.headers.get("authorization")?.replace("Bearer ", "")
 
     if (!token) {
-      return NextResponse.json({ success: false, message: "未提供认证token" }, { status: 401 })
+      return NextResponse.json({ success: false, message: "请先登录" }, { status: 401 })
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "fallback-secret") as any
     const userId = decoded.userId
 
-    const { amount, purpose, description, metadata } = await request.json()
+    const body = await request.json()
+    const { amount, reason, itemId } = body
 
-    if (!amount || !purpose || !description) {
-      return NextResponse.json({ success: false, message: "金额、用途和描述不能为空" }, { status: 400 })
+    if (!amount || amount <= 0) {
+      return NextResponse.json({ success: false, message: "无效的星币数量" }, { status: 400 })
     }
 
-    if (amount <= 0) {
-      return NextResponse.json({ success: false, message: "金额必须大于0" }, { status: 400 })
+    // 获取用户当前余额
+    const userBalance = userBalances.get(userId) || {
+      balance: 100,
+      totalEarned: 100,
+      totalSpent: 0,
     }
 
-    // 模拟检查用户余额
-    const currentBalance = 1250 // 实际应该从数据库查询
-
-    if (currentBalance < amount) {
+    // 检查余额是否足够
+    if (userBalance.balance < amount) {
       return NextResponse.json({ success: false, message: "星币余额不足" }, { status: 400 })
     }
 
-    // 模拟更新用户星币余额
-    const newBalance = currentBalance - amount
+    // 更新余额
+    userBalance.balance -= amount
+    userBalance.totalSpent += amount
+    userBalances.set(userId, userBalance)
 
-    // 记录交易（实际应该保存到数据库）
+    // 记录交易
     const transaction = {
-      id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: Date.now().toString(),
       userId,
       type: "spend",
       amount,
-      source: purpose,
-      description,
-      metadata,
-      timestamp: new Date().toISOString(),
-      status: "completed",
+      reason: reason || "购买道具",
+      itemId,
+      balanceAfter: userBalance.balance,
+      createdAt: new Date().toISOString(),
     }
+    transactions.push(transaction)
 
     return NextResponse.json({
       success: true,
-      newBalance,
-      transaction,
+      message: `成功消费${amount}星币`,
+      data: {
+        transaction,
+        newBalance: userBalance.balance,
+      },
     })
   } catch (error) {
-    console.error("消费星币失败:", error)
+    console.error("星币消费失败:", error)
 
     if (error instanceof jwt.JsonWebTokenError) {
-      return NextResponse.json({ success: false, message: "无效的认证token" }, { status: 401 })
+      return NextResponse.json({ success: false, message: "认证失败" }, { status: 401 })
     }
 
-    return NextResponse.json({ success: false, message: "消费失败，请稍后重试" }, { status: 500 })
+    return NextResponse.json({ success: false, message: "星币消费失败" }, { status: 500 })
   }
 }
